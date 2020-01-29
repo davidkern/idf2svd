@@ -1,11 +1,12 @@
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::prelude::*;
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 
 /* Regex's to find all the peripheral addresses */
+pub const BASE_PERIPHERALS: &'static str = r"\#define[\s*]+REG_(.*)_BASE\((.*)\)";
 pub const REG_BASE: &'static str = r"\#define[\s*]+DR_REG_(.*)_BASE[\s*]+0x([0-9a-fA-F]+)";
 pub const REG_DEF: &'static str = r"\#define[\s*]+([^\s*]+)_REG[\s*]+\(DR_REG_(.*)_BASE \+ (.*)\)";
 pub const REG_DEF_INDEX: &'static str =
@@ -126,6 +127,7 @@ enum State {
 }
 
 pub fn parse_idf(path: &str) -> HashMap<String, Peripheral> {
+    let mut base_peripherals = HashSet::new();
     let mut peripherals = HashMap::new();
     let mut invalid_peripherals = vec![];
     let mut invalid_files = vec![];
@@ -135,6 +137,7 @@ pub fn parse_idf(path: &str) -> HashMap<String, Peripheral> {
     let mut interrupts = vec![];
 
     let filname = path.to_owned() + "soc.h";
+    let re_base_peripherals = Regex::new(BASE_PERIPHERALS).unwrap();
     let re_base = Regex::new(REG_BASE).unwrap();
     let re_reg = Regex::new(REG_DEF).unwrap();
     let re_reg_index = Regex::new(REG_DEF_INDEX).unwrap();
@@ -143,6 +146,25 @@ pub fn parse_idf(path: &str) -> HashMap<String, Peripheral> {
     let re_interrupts = Regex::new(INTERRUPTS).unwrap();
 
     let soc_h = file_to_string(&filname);
+
+    /*
+        Determine indexed peripherals from REG_(.*)_BASE defines
+    */
+    std::fs::read_dir(path)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|f| f.path().to_str().unwrap().ends_with("_reg.h"))
+        .for_each(|f| {
+            let name = f.path();
+            let name = name.to_str().unwrap();
+            let file_data = file_to_string(name);
+            
+            for captures in re_base_peripherals.captures_iter(&file_data) {
+                let peripheral_name = &captures[1];
+                base_peripherals.insert(peripheral_name.to_string());
+                peripherals.insert(peripheral_name.to_string(), Peripheral::default());
+            }
+        });
 
     for captures in re_interrupts.captures_iter(soc_h.as_str()) {
         let name = &captures[1];
@@ -162,11 +184,11 @@ pub fn parse_idf(path: &str) -> HashMap<String, Peripheral> {
        These blocks are identical, so we need to do some post processing to properly index
        and offset these
     */
-    peripherals.insert("I2C".to_string(), Peripheral::default());
-    peripherals.insert("SPI".to_string(), Peripheral::default());
-    peripherals.insert("TIMG".to_string(), Peripheral::default());
-    peripherals.insert("MCPWM".to_string(), Peripheral::default());
-    peripherals.insert("UHCI".to_string(), Peripheral::default());
+    // peripherals.insert("I2C".to_string(), Peripheral::default());
+    // peripherals.insert("SPI".to_string(), Peripheral::default());
+    // peripherals.insert("TIMG".to_string(), Peripheral::default());
+    // peripherals.insert("MCPWM".to_string(), Peripheral::default());
+    // peripherals.insert("UHCI".to_string(), Peripheral::default());
 
     /* Peripheral base addresses */
     for captures in re_base.captures_iter(soc_h.as_str()) {
@@ -335,6 +357,11 @@ pub fn parse_idf(path: &str) -> HashMap<String, Peripheral> {
             "The following bit_fields failed to parse {:?}",
             invalid_bit_fields
         );
+    }
+
+    for (name, peripheral) in &peripherals {
+        let is_base = base_peripherals.contains(name);
+        println!("{}: {}", name, is_base);
     }
 
     // println!("Interrupt information: {:#?}", interrupts);
