@@ -1,3 +1,8 @@
+extern crate nom;
+
+pub mod parser;
+pub mod parsing;
+
 pub const SOC_BASE_PATH: &'static str = "esp-idf/components/soc/esp32/include/soc/";
 
 use header2svd::{parse_idf, Bits, Peripheral};
@@ -5,6 +10,7 @@ use header2svd::{parse_idf, Bits, Peripheral};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufWriter;
+use std::path::Path;
 use svd_parser::{
     addressblock::AddressBlock, bitrange::BitRangeType, cpu::CpuBuilder, device::DeviceBuilder,
     encode::Encode, endian::Endian, fieldinfo::FieldInfoBuilder, peripheral::PeripheralBuilder,
@@ -13,12 +19,13 @@ use svd_parser::{
 };
 
 fn main() {
-    let peripherals = parse_idf(SOC_BASE_PATH);
+    let _new_peripherals = parsing::parse_idf(Path::new(SOC_BASE_PATH)).unwrap();
+    // let peripherals = parse_idf(SOC_BASE_PATH);
 
-    let svd = create_svd(peripherals).unwrap();
+    // let svd = create_svd(peripherals).unwrap();
 
-    let f = BufWriter::new(File::create("esp32.svd").unwrap());
-    svd.encode().unwrap().write(f).unwrap();
+    // let f = BufWriter::new(File::create("esp32.svd").unwrap());
+    // svd.encode().unwrap().write(f).unwrap();
 }
 
 fn create_svd(peripherals: HashMap<String, Peripheral>) -> Result<SvdDevice, ()> {
