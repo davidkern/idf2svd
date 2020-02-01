@@ -359,7 +359,7 @@ pub fn parse_idf(path: &str) -> HashMap<String, Peripheral> {
         );
     }
 
-    for (name, peripheral) in &peripherals {
+    for (name, _peripheral) in &peripherals {
         let is_base = base_peripherals.contains(name);
         println!("{}: {}", name, is_base);
     }
