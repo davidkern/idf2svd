@@ -1,5 +1,7 @@
 use std::fs;
-use nom;
+use nom::{
+    bytes::complete::{tag},
+};
 use crate::parser;
 
 #[derive(Default, Debug, Clone)]
@@ -8,7 +10,9 @@ pub struct Soc {
 }
 
 impl parser::ParseFromStr<Soc> for Soc {
-    fn parse(i: &str) -> parser::IResult<&str, Self> {
-        Ok(("", Soc{}))
+    fn parse(input: &str) -> parser::IResult<&str, Self> {
+        let (input, _) = tag("#")(input)?;
+
+        Ok((input, Soc{}))
     }
 }
