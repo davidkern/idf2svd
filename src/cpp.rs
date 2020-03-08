@@ -3,7 +3,18 @@
 //! attempt to be complete or even entirely correct as parsing arbitrary C code is difficult.
 //!
 //! C-preprocessor ref: https://gcc.gnu.org/onlinedocs/gcc-2.95.3/cpp_1.html
+//! JSON nom example (close to C): https://github.com/Geal/nom/blob/master/examples/json.rs
 
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_while},
+    character::complete::{alpha1, digit1},
+    combinator::recognize,
+    error::ParseError,
+    multi::many0,
+    sequence::preceded,
+    IResult,
+};
 use regex::Regex;
 use std::fs::File;
 use std::io::Read;
@@ -16,12 +27,9 @@ pub enum CppData {
     /// Skipped data
     Unknown { line: String },
 
-    /// #ifdef
-    IfDef { name: String },
-
     /// #define
     Define {
-        name: String,
+        identifier: String,
         arguments: Vec<String>,
         body: String,
     },
@@ -59,6 +67,8 @@ fn cpp_transform(input: &str) -> String {
         false => format!("{}\n", input),
     };
 
+    // Normalize CRLF to LF
+    text = text.replace("\r\n", "\n");
     // Continue lines ending with Backslash-Newline
     text = text.replace("\\\n", "");
 
@@ -69,6 +79,30 @@ fn cpp_transform(input: &str) -> String {
     text = REGEX_BLOCK_COMMENT.replace_all(&text, " ").to_string();
 
     text
+}
+
+/// parser-combinator matching whitespace
+fn ws<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    let ws_chars = " \t\r\n";
+
+    take_while(move |c| ws_chars.contains(c))(i)
+}
+
+/// parser-combinator matching #define directive
+fn define<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    tag("#define")(i)
+}
+
+/// parser-combinator matching C identifier
+/// An identifier starts with either '_' or an alpha character
+/// and is followed by zero or more '_', alpha or digits
+/// Known issues:
+///  * Allows identifiers which C would not allow, for example: "_"
+fn identifier<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    recognize(preceded(
+        alt((tag("_"), alpha1)),
+        many0(alt((tag("_"), alpha1, digit1))),
+    ))(i)
 }
 
 #[cfg(test)]
@@ -99,5 +133,20 @@ mod test {
         assert_eq!(cpp_transform("/*abc*/\n/*def*/"), " \n \n");
         assert_eq!(cpp_transform("/**abc*/"), " \n");
         assert_eq!(cpp_transform("/**\n * abc\n */"), " \n");
+    }
+
+    #[test]
+    /// Test whitespace
+    fn test_whitespace() {
+        assert_eq!(ws::<()>(""), IResult::Ok(("", "")));
+        assert_eq!(ws::<()>("  x"), IResult::Ok(("x", "  ")));
+        assert_eq!(ws::<()>(" \n\tx"), IResult::Ok(("x", " \n\t")));
+    }
+
+    #[test]
+    /// Test identifier
+    fn test_identifier() {
+        assert_eq!(identifier::<()>("_aB0"), IResult::Ok(("", "_aB0")));
+        assert_eq!(identifier::<()>("X_a_B0 "), IResult::Ok((" ", "X_a_B0")));
     }
 }
